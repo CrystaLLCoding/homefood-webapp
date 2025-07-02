@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import WebApp from "@twa-dev/sdk";
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
@@ -14,11 +14,32 @@ function App() {
   const [orderForm, setOrderForm] = useState({ address: "", comment: "" });
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState("");
+  const [showCookForm, setShowCookForm] = useState(false);
+  const [cookForm, setCookForm] = useState({
+    firstName: "",
+    lastName: "",
+    phone: "",
+    homeAddress: "",
+    saleAddress: "",
+    username: "",
+    bio: "",
+    certificate: null,
+  });
+  const [cookFormLoading, setCookFormLoading] = useState(false);
+  const [cookFormSuccess, setCookFormSuccess] = useState("");
+  const [cookFormError, setCookFormError] = useState("");
+  const certInputRef = useRef();
 
   useEffect(() => {
     WebApp.ready();
     if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.user) {
       setTgUser(WebApp.initDataUnsafe.user);
+      setCookForm((prev) => ({
+        ...prev,
+        username: WebApp.initDataUnsafe.user.username || "",
+        firstName: WebApp.initDataUnsafe.user.first_name || "",
+        lastName: WebApp.initDataUnsafe.user.last_name || "",
+      }));
     }
   }, []);
 
@@ -86,7 +107,7 @@ function App() {
     setOrderSuccess("");
     try {
       // TODO: заменить на реальный backend URL и добавить авторизацию
-      const res = await fetch("https://YOUR_BACKEND_URL/orders", {
+      const res = await fetch("http://localhost:3000/orders", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -113,6 +134,58 @@ function App() {
     }
   };
 
+  // Форма регистрации повара
+  const handleCookFormChange = (e) => {
+    const { name, value, files } = e.target;
+    setCookForm((prev) => ({
+      ...prev,
+      [name]: files ? files[0] : value,
+    }));
+  };
+
+  const validateCookForm = () => {
+    const { firstName, lastName, phone, homeAddress, saleAddress, username, certificate } = cookForm;
+    if (!firstName || !lastName || !phone || !homeAddress || !saleAddress || !username || !certificate) {
+      setCookFormError("Пожалуйста, заполните все обязательные поля и приложите сертификат.");
+      return false;
+    }
+    return true;
+  };
+
+  const handleCookFormSubmit = async (e) => {
+    e.preventDefault();
+    setCookFormError("");
+    setCookFormSuccess("");
+    if (!validateCookForm()) return;
+    setCookFormLoading(true);
+    try {
+      // Формируем FormData для multipart/form-data
+      const formData = new FormData();
+      formData.append("firstName", cookForm.firstName);
+      formData.append("lastName", cookForm.lastName);
+      formData.append("phone", cookForm.phone);
+      formData.append("homeAddress", cookForm.homeAddress);
+      formData.append("saleAddress", cookForm.saleAddress);
+      formData.append("username", cookForm.username);
+      formData.append("bio", cookForm.bio);
+      formData.append("telegramId", tgUser?.id || "");
+      if (cookForm.certificate) {
+        formData.append("certificate", cookForm.certificate);
+      }
+      const res = await fetch("http://localhost:3000/cooks", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Ошибка при регистрации повара");
+      setCookFormSuccess("Заявка отправлена! Ожидайте подтверждения.");
+      setShowCookForm(false);
+    } catch (e) {
+      setCookFormError("Ошибка при регистрации повара");
+    } finally {
+      setCookFormLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#f5f5f5] flex flex-col items-center p-4">
       <div className="w-full max-w-xl">
@@ -133,8 +206,45 @@ function App() {
         >
           🛒 Корзина ({cart.reduce((sum, item) => sum + item.qty, 0)})
         </button>
+        <button
+          className="ml-2 bg-orange-500 text-white px-4 py-2 rounded-lg shadow hover:bg-orange-600 transition mb-6"
+          onClick={() => setShowCookForm(true)}
+        >
+          👨‍🍳 Стать поваром
+        </button>
         {error && <div className="text-red-500 mb-4">{error}</div>}
         {orderSuccess && <div className="text-green-600 mb-4">{orderSuccess}</div>}
+        {cookFormSuccess && <div className="text-green-600 mb-4">{cookFormSuccess}</div>}
+        {cookFormError && <div className="text-red-500 mb-4">{cookFormError}</div>}
+        {showCookForm && (
+          <form className="bg-white rounded-lg shadow p-4 mb-6" onSubmit={handleCookFormSubmit}>
+            <h2 className="text-xl font-bold mb-2">Регистрация повара</h2>
+            <div className="grid grid-cols-1 gap-2">
+              <input className="border p-2 rounded" name="firstName" placeholder="Имя" value={cookForm.firstName} onChange={handleCookFormChange} required />
+              <input className="border p-2 rounded" name="lastName" placeholder="Фамилия" value={cookForm.lastName} onChange={handleCookFormChange} required />
+              <input className="border p-2 rounded" name="phone" placeholder="Телефон" value={cookForm.phone} onChange={handleCookFormChange} required />
+              <input className="border p-2 rounded" name="homeAddress" placeholder="Адрес проживания" value={cookForm.homeAddress} onChange={handleCookFormChange} required />
+              <input className="border p-2 rounded" name="saleAddress" placeholder="Адрес точки продажи" value={cookForm.saleAddress} onChange={handleCookFormChange} required />
+              <input className="border p-2 rounded" name="username" placeholder="Telegram username" value={cookForm.username} onChange={handleCookFormChange} required />
+              <textarea className="border p-2 rounded" name="bio" placeholder="О себе (опыт, специализация)" value={cookForm.bio} onChange={handleCookFormChange} />
+              <input className="border p-2 rounded" name="certificate" type="file" accept="image/*,.pdf" ref={certInputRef} onChange={handleCookFormChange} required />
+            </div>
+            <button
+              className="bg-[#0088cc] text-white px-6 py-2 rounded-lg shadow hover:bg-[#0077b6] transition w-full mt-4"
+              type="submit"
+              disabled={cookFormLoading}
+            >
+              {cookFormLoading ? "Отправка..." : "Отправить заявку"}
+            </button>
+            <button
+              className="w-full mt-2 text-gray-500 hover:underline"
+              type="button"
+              onClick={() => setShowCookForm(false)}
+            >
+              Отмена
+            </button>
+          </form>
+        )}
         {showCart ? (
           <div className="bg-white rounded-lg shadow p-4 mb-6">
             <h2 className="text-xl font-bold mb-2">Корзина</h2>
